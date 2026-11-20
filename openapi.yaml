@@ -1,0 +1,348 @@
+openapi: 3.1.0
+info:
+  title: Vortex LMS Student API
+  version: 1.0.0
+  description: Student Portal API. Administration and Super Admin APIs are intentionally excluded.
+servers:
+  - url: http://localhost:5000/api/v1
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: API health check
+      responses:
+        '200': { description: Service is healthy }
+  /auth/register:
+    post:
+      security: []
+      summary: Register a student and send a verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '202': { description: Verification flow accepted }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /auth/verify-otp:
+    post:
+      security: []
+      summary: Verify a registration code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OtpRequest' }
+      responses:
+        '200': { description: Account verified }
+        '400': { description: Invalid or expired code }
+  /auth/login:
+    post:
+      security: []
+      summary: Sign in and set an HTTP-only refresh cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: Access token and student details returned; refresh token set as cookie }
+        '401': { description: Generic invalid credentials response }
+  /auth/forgot-password:
+    post:
+      security: []
+      summary: Request a password reset code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PhoneRequest' }
+      responses:
+        '202': { description: Generic accepted response }
+  /auth/reset-password:
+    post:
+      security: []
+      summary: Reset password with a verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '200': { description: Password updated and refresh sessions revoked }
+        '400': { description: Invalid or expired code }
+  /auth/refresh:
+    post:
+      security: []
+      summary: Rotate the HTTP-only refresh cookie
+      responses:
+        '200': { description: New access token returned and refresh cookie rotated }
+        '401': { description: Missing, expired, revoked, or reused refresh token }
+  /auth/logout:
+    post:
+      security: []
+      summary: Revoke the refresh session and clear its cookie
+      responses:
+        '200': { description: Logged out }
+  /auth/me:
+    get:
+      summary: Return the authenticated student
+      responses:
+        '200': { description: Current user returned }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /profile:
+    get:
+      summary: Read the current student's profile and document metadata
+      responses:
+        '200': { description: Profile returned; document URLs require authentication }
+    patch:
+      summary: Update editable profile fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfilePatch' }
+      responses:
+        '200': { description: Updated profile returned }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /profile/photo:
+    post:
+      summary: Upload a private profile photo
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/PhotoUpload' }
+      responses:
+        '201': { description: Profile photo stored privately }
+        '413': { description: Upload exceeds 5 MB }
+  /profile/documents:
+    post:
+      summary: Upload a private identity document
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/DocumentUpload' }
+      responses:
+        '201': { description: Private document metadata returned }
+        '413': { description: Upload exceeds 5 MB }
+  /files/{storageKey}:
+    get:
+      summary: Download a file owned by the authenticated student
+      parameters:
+        - { in: path, name: storageKey, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Authenticated private file }
+        '404': { description: File not found or not owned by this student }
+  /courses:
+    get:
+      summary: List published courses
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: Paginated course list }
+  /courses/{courseId}:
+    get:
+      summary: Get published course details and assessment schedule
+      parameters:
+        - { in: path, name: courseId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Course details }
+        '404': { description: Course not found }
+  /enrollments:
+    get:
+      summary: List the current student's enrollments
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: Paginated owned enrollments }
+  /enrollments/{enrollmentId}:
+    get:
+      summary: Get an owned enrollment
+      parameters:
+        - { in: path, name: enrollmentId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Enrollment details }
+        '404': { description: Enrollment not found }
+  /enrollments/{enrollmentId}/weeks:
+    get:
+      summary: List published weeks for an owned enrollment
+      parameters:
+        - { in: path, name: enrollmentId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Published weeks }
+  /assessments:
+    get:
+      summary: List published assessments in owned enrollments
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: Paginated assessment list }
+  /assessments/{assessmentId}:
+    get:
+      summary: Get assessment questions without answer keys
+      parameters:
+        - { in: path, name: assessmentId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Assessment and student-safe options }
+  /assessments/{assessmentId}/attempts:
+    post:
+      summary: Start an attempt and enforce the attempt limit
+      parameters:
+        - { in: path, name: assessmentId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '201': { description: Attempt started }
+        '409': { description: Attempt limit reached }
+  /attempts/{attemptId}/answers:
+    put:
+      summary: Save answers for questions in an owned active attempt
+      parameters:
+        - { in: path, name: attemptId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers: { type: array, items: { $ref: '#/components/schemas/AssessmentAnswerInput' } }
+      responses:
+        '200': { description: Saved answers }
+        '400': { description: Question or option does not belong to this assessment }
+  /attempts/{attemptId}/submit:
+    post:
+      summary: Submit and auto-evaluate objective questions
+      parameters:
+        - { in: path, name: attemptId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Submitted or automatically evaluated attempt }
+        '409': { description: Attempt expired or no longer active }
+  /attempts/{attemptId}/result:
+    get:
+      summary: Read a submitted attempt result
+      parameters:
+        - { in: path, name: attemptId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Owned submitted result; correctness shown only after evaluation }
+  /notifications:
+    get:
+      summary: List the current student's notifications
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: Paginated notifications }
+  /notifications/{notificationId}/read:
+    patch:
+      summary: Mark an owned notification as read
+      parameters:
+        - { in: path, name: notificationId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Notification read state }
+        '404': { description: Notification not found }
+  /progress:
+    get:
+      summary: Get consistent course and week progress calculations
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: Paginated progress by owned enrollment }
+  /dashboard:
+    get:
+      summary: Get assessment progress, needs-attention items, average, and activity streak
+      responses:
+        '200': { description: Student dashboard }
+  /certificates:
+    get:
+      summary: List the current student's certificates
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: Paginated certificate metadata }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      in: query
+      name: pageSize
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  responses:
+    Unauthorized:
+      description: Authentication required
+    ValidationError:
+      description: Request validation failed
+  schemas:
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, password, fullName, highestQualification]
+      properties:
+        phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+        password: { type: string, minLength: 12, maxLength: 72 }
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+        highestQualification: { $ref: '#/components/schemas/Qualification' }
+        otherQualification: { type: string, maxLength: 120 }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, password]
+      properties:
+        phone: { type: string }
+        password: { type: string }
+    PhoneRequest:
+      type: object
+      additionalProperties: false
+      required: [phone]
+      properties:
+        phone: { type: string }
+    OtpRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, otp]
+      properties:
+        phone: { type: string }
+        otp: { type: string, pattern: '^[0-9]{6}$' }
+    ResetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, otp, newPassword]
+      properties:
+        phone: { type: string }
+        otp: { type: string }
+        newPassword: { type: string, minLength: 12, maxLength: 72 }
+    ProfilePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+        highestQualification: { $ref: '#/components/schemas/Qualification' }
+        otherQualification: { type: [string, 'null'], maxLength: 120 }
+    Qualification:
+      type: string
+      enum: [SSLC, PLUS_TWO, DIPLOMA, DEGREE, POST_GRADUATION, OTHER]
+    PhotoUpload:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary, description: JPEG, PNG, or WebP; maximum 5 MB }
+    DocumentUpload:
+      type: object
+      required: [documentType, file]
+      properties:
+        documentType: { type: string, enum: [AADHAAR, PAN, PASSPORT, OTHER] }
+        file: { type: string, format: binary, description: PDF, JPEG, PNG, or WebP; maximum 5 MB }
+    AssessmentAnswerInput:
+      type: object
+      additionalProperties: false
+      required: [questionId]
+      properties:
+        questionId: { type: string, format: uuid }
+        selectedOptionId: { type: string, format: uuid }
+        selectedOptionIds: { type: array, items: { type: string, format: uuid } }
+        answerText: { type: string, maxLength: 10000 }

@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+coverage/
+.private-uploads/
+.local-pgdata/
+.local-pg.log
+.db-test-uploads/
+*.log
+*.tmp
+dist/

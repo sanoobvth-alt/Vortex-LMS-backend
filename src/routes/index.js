@@ -1,0 +1,21 @@
+import { Router } from 'express';
+import { authRouter } from '../modules/auth/auth.routes.js';
+import { profileRouter } from '../modules/profile/profile.routes.js';
+import { coursesRouter } from '../modules/courses/courses.routes.js';
+import { enrollmentsRouter } from '../modules/enrollments/enrollments.routes.js';
+import { assessmentsRouter, attemptsRouter } from '../modules/assessments/assessments.routes.js';
+import { studentRouter } from '../modules/student/student.routes.js';
+import { progressRouter } from '../modules/progress/progress.routes.js';
+import { filesRouter } from '../modules/profile/file.routes.js';
+
+export const apiRouter = Router();
+apiRouter.get('/health', (_req, res) => res.json({ data: { status: 'ok' } }));
+apiRouter.use('/auth', authRouter);
+apiRouter.use('/profile', profileRouter);
+apiRouter.use('/courses', coursesRouter);
+apiRouter.use('/enrollments', enrollmentsRouter);
+apiRouter.use('/assessments', assessmentsRouter);
+apiRouter.use('/attempts', attemptsRouter);
+apiRouter.use('/', studentRouter);
+apiRouter.use('/', progressRouter);
+apiRouter.use('/files', filesRouter);
