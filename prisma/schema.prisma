@@ -94,27 +94,29 @@ model User {
   updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
   profile         StudentProfile?
   refreshSessions RefreshSession[]
+  mediaAssets     MediaAsset[]
 
   @@index([role])
   @@index([status])
 }
 
 model StudentProfile {
-  id                   String              @id @default(uuid()) @db.Uuid
-  userId               String              @unique @db.Uuid
+  id                   String                 @id @default(uuid()) @db.Uuid
+  userId               String                 @unique @db.Uuid
   fullName             String
   highestQualification Qualification
   otherQualification   String?
   profilePhotoKey      String?
-  studentCode          String              @unique
-  createdAt            DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime            @updatedAt @db.Timestamptz(3)
-  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studentCode          String                 @unique
+  createdAt            DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime               @updatedAt @db.Timestamptz(3)
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents            StudentDocument[]
   enrollments          Enrollment[]
   attempts             AssessmentAttempt[]
   notifications        Notification[]
   certificates         Certificate[]
+  assignments          AssignmentSubmission[]
 }
 
 model StudentDocument {
@@ -164,18 +166,23 @@ model RefreshSession {
 }
 
 model Course {
-  id            String        @id @default(uuid()) @db.Uuid
-  title         String
-  slug          String        @unique
-  description   String?       @db.Text
-  thumbnailKey  String?
-  durationWeeks Int
-  status        CourseStatus  @default(DRAFT)
-  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
-  enrollments   Enrollment[]
-  weeks         CourseWeek[]
-  certificates  Certificate[]
+  id               String           @id @default(uuid()) @db.Uuid
+  title            String
+  slug             String           @unique
+  description      String?          @db.Text
+  thumbnailKey     String?
+  thumbnailAssetId String?          @unique @db.Uuid
+  durationWeeks    Int
+  status           CourseStatus     @default(DRAFT)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(3)
+  enrollments      Enrollment[]
+  weeks            CourseWeek[]
+  certificates     Certificate[]
+  materials        CourseMaterial[]
+  assignments      Assignment[]
+  mediaAssets      MediaAsset[]     @relation("CourseAssets")
+  thumbnailAsset   MediaAsset?      @relation("CourseThumbnail", fields: [thumbnailAssetId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([createdAt])
@@ -200,16 +207,21 @@ model Enrollment {
 }
 
 model CourseWeek {
-  id          String       @id @default(uuid()) @db.Uuid
-  courseId    String       @db.Uuid
-  weekNumber  Int
-  title       String
-  description String?      @db.Text
-  isPublished Boolean      @default(false)
-  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
-  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  assessments Assessment[]
+  id               String           @id @default(uuid()) @db.Uuid
+  courseId         String           @db.Uuid
+  weekNumber       Int
+  title            String
+  description      String?          @db.Text
+  thumbnailKey     String?
+  thumbnailAssetId String?          @unique @db.Uuid
+  isPublished      Boolean          @default(false)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(3)
+  course           Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  assessments      Assessment[]
+  materials        CourseMaterial[]
+  assignments      Assignment[]
+  thumbnailAsset   MediaAsset?      @relation("WeekThumbnail", fields: [thumbnailAssetId], references: [id], onDelete: SetNull)
 
   @@unique([courseId, weekNumber])
   @@index([courseId, isPublished])
@@ -320,11 +332,117 @@ model Certificate {
   courseId          String         @db.Uuid
   certificateNumber String         @unique
   storageKey        String
+  mediaAssetId      String?        @db.Uuid
   issuedAt          DateTime       @default(now()) @db.Timestamptz(3)
   createdAt         DateTime       @default(now()) @db.Timestamptz(3)
   student           StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
   course            Course         @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  mediaAsset        MediaAsset?    @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
 
   @@unique([studentId, courseId])
+  @@unique([mediaAssetId])
   @@index([studentId, issuedAt])
+}
+
+enum MediaPurpose {
+  COURSE_PDF
+  COURSE_THUMBNAIL
+  MODULE_THUMBNAIL
+  ASSIGNMENT_ATTACHMENT
+  PROFILE_PHOTO
+  IDENTITY_DOCUMENT
+  CERTIFICATE
+}
+
+model MediaAsset {
+  id                   String                @id @default(uuid()) @db.Uuid
+  publicId             String                @unique
+  cloudAssetId         String?
+  secureUrl            String                @db.Text
+  resourceType         String
+  deliveryType         String
+  format               String
+  mimeType             String
+  fileSizeBytes        BigInt
+  originalFileName     String
+  folder               String
+  purpose              MediaPurpose
+  deletionPending      Boolean               @default(false)
+  ownerUserId          String                @db.Uuid
+  courseId             String?               @db.Uuid
+  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  course               Course?               @relation("CourseAssets", fields: [courseId], references: [id], onDelete: Cascade)
+  courseThumbnail      Course?               @relation("CourseThumbnail")
+  weekThumbnail        CourseWeek?           @relation("WeekThumbnail")
+  certificate          Certificate?
+  courseMaterial       CourseMaterial?
+  submissionAttachment SubmissionAttachment?
+
+  @@index([ownerUserId, purpose, createdAt])
+  @@index([courseId, purpose])
+}
+
+enum CourseMaterialType {
+  YOUTUBE_VIDEO
+  PDF_DOCUMENT
+  SELF_LEARNING_TOPIC
+}
+
+model CourseMaterial {
+  id           String             @id @default(uuid()) @db.Uuid
+  courseId     String             @db.Uuid
+  weekId       String             @db.Uuid
+  type         CourseMaterialType
+  title        String
+  description  String?            @db.Text
+  externalUrl  String?            @db.Text
+  mediaAssetId String?            @db.Uuid
+  sortOrder    Int                @default(0)
+  createdAt    DateTime           @default(now()) @db.Timestamptz(3)
+  course       Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  week         CourseWeek         @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  mediaAsset   MediaAsset?        @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+
+  @@unique([mediaAssetId])
+  @@index([weekId, sortOrder])
+}
+
+model Assignment {
+  id          String                 @id @default(uuid()) @db.Uuid
+  courseId    String                 @db.Uuid
+  weekId      String                 @db.Uuid
+  title       String
+  description String                 @db.Text
+  isPublished Boolean                @default(false)
+  dueAt       DateTime?              @db.Timestamptz(3)
+  createdAt   DateTime               @default(now()) @db.Timestamptz(3)
+  course      Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  week        CourseWeek             @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  submissions AssignmentSubmission[]
+
+  @@index([weekId, isPublished])
+}
+
+model AssignmentSubmission {
+  id           String                 @id @default(uuid()) @db.Uuid
+  assignmentId String                 @db.Uuid
+  studentId    String                 @db.Uuid
+  submittedAt  DateTime               @default(now()) @db.Timestamptz(3)
+  assignment   Assignment             @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student      StudentProfile         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attachments  SubmissionAttachment[]
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId, submittedAt])
+}
+
+model SubmissionAttachment {
+  id           String               @id @default(uuid()) @db.Uuid
+  submissionId String               @db.Uuid
+  mediaAssetId String               @unique @db.Uuid
+  submission   AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  mediaAsset   MediaAsset           @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
 }

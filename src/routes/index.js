@@ -7,6 +7,7 @@ import { assessmentsRouter, attemptsRouter } from '../modules/assessments/assess
 import { studentRouter } from '../modules/student/student.routes.js';
 import { progressRouter } from '../modules/progress/progress.routes.js';
 import { filesRouter } from '../modules/profile/file.routes.js';
+import { mediaRouter } from '../modules/media.routes.js';
 
 export const apiRouter = Router();
 apiRouter.get('/health', (_req, res) => res.json({ data: { status: 'ok' } }));
@@ -19,3 +20,4 @@ apiRouter.use('/attempts', attemptsRouter);
 apiRouter.use('/', studentRouter);
 apiRouter.use('/', progressRouter);
 apiRouter.use('/files', filesRouter);
+apiRouter.use('/', mediaRouter);

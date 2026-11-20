@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Vortex LMS Student API
   version: 1.0.0
-  description: Student Portal API. Administration and Super Admin APIs are intentionally excluded.
+  description: Student APIs plus existing-role Admin/Super Admin learning content and media APIs.
 servers:
   - url: http://localhost:5000/api/v1
 security:
@@ -137,6 +137,83 @@ paths:
       responses:
         '200': { description: Authenticated private file }
         '404': { description: File not found or not owned by this student }
+  /courses/{courseId}/thumbnail:
+    post:
+      summary: Admin upload of a public course thumbnail
+      parameters: [{ in: path, name: courseId, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/ThumbnailUpload' }
+      responses:
+        '201': { description: Thumbnail URL and asset identifier }
+        '403': { description: Admin role required }
+  /courses/{courseId}/materials:
+    post:
+      summary: Admin create a PDF, YouTube video URL, or self-learning topic
+      parameters: [{ in: path, name: courseId, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/CourseMaterialUpload' }
+      responses:
+        '201': { description: Learning material created }
+        '403': { description: Admin role required }
+  /courses/{courseId}/weeks/{weekId}/materials:
+    get:
+      summary: List the enrolled student's published module learning materials
+      parameters:
+        - { in: path, name: courseId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: weekId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Learning materials; private PDF URLs resolve through the authenticated file route }
+        '404': { description: Module not found or not accessible }
+  /courses/{courseId}/weeks/{weekId}/thumbnail:
+    post:
+      summary: Admin upload a public module thumbnail
+      parameters:
+        - { in: path, name: courseId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: weekId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/ThumbnailUpload' }
+      responses:
+        '201': { description: Thumbnail URL and asset identifier }
+  /courses/{courseId}/assignments:
+    post:
+      summary: Admin create a module assignment
+      parameters: [{ in: path, name: courseId, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignmentCreate' }
+      responses:
+        '201': { description: Assignment created and published }
+  /courses/{courseId}/weeks/{weekId}/assignments:
+    get:
+      summary: List published assignments and the student's submission status
+      parameters:
+        - { in: path, name: courseId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: weekId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Module assignments }
+  /assignments/{assignmentId}/submissions:
+    post:
+      summary: Submit up to five private assignment attachments
+      parameters: [{ in: path, name: assignmentId, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/SubmissionUpload' }
+      responses:
+        '201': { description: Submission and attachment count }
+        '413': { description: A file exceeds the configured per-file limit }
   /courses:
     get:
       summary: List published courses
@@ -251,6 +328,15 @@ paths:
       responses:
         '200': { description: Student dashboard }
   /certificates:
+    post:
+      summary: Admin upload and issue a private PDF certificate
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/CertificateUpload' }
+      responses:
+        '201': { description: Certificate issued }
     get:
       summary: List the current student's certificates
       parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
@@ -337,6 +423,42 @@ components:
       properties:
         documentType: { type: string, enum: [AADHAAR, PAN, PASSPORT, OTHER] }
         file: { type: string, format: binary, description: PDF, JPEG, PNG, or WebP; maximum 5 MB }
+    ThumbnailUpload:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary, description: JPEG, PNG, or WebP; maximum 5 MB }
+    CourseMaterialUpload:
+      type: object
+      required: [weekId, type, title]
+      properties:
+        weekId: { type: string, format: uuid }
+        type: { type: string, enum: [YOUTUBE_VIDEO, PDF_DOCUMENT, SELF_LEARNING_TOPIC] }
+        title: { type: string, maxLength: 180 }
+        description: { type: string, maxLength: 4000 }
+        externalUrl: { type: string, format: uri }
+        file: { type: string, format: binary, description: PDF only for PDF_DOCUMENT; maximum 5 MB }
+    AssignmentCreate:
+      type: object
+      required: [weekId, title, description]
+      properties:
+        weekId: { type: string, format: uuid }
+        title: { type: string, maxLength: 180 }
+        description: { type: string, maxLength: 5000 }
+        dueAt: { type: string, format: date-time }
+    SubmissionUpload:
+      type: object
+      required: [files]
+      properties:
+        files: { type: array, maxItems: 5, items: { type: string, format: binary, description: PDF, JPEG, PNG, WebP, or ZIP; maximum 5 MB each } }
+    CertificateUpload:
+      type: object
+      required: [studentId, courseId, certificateNumber, file]
+      properties:
+        studentId: { type: string, format: uuid }
+        courseId: { type: string, format: uuid }
+        certificateNumber: { type: string, maxLength: 100 }
+        file: { type: string, format: binary, description: PDF only; maximum 5 MB }
     AssessmentAnswerInput:
       type: object
       additionalProperties: false

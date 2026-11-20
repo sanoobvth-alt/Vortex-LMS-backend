@@ -20,13 +20,14 @@ export async function listCourses(query) {
         slug: true,
         description: true,
         thumbnailKey: true,
+        thumbnailAsset: { select: { secureUrl: true } },
         durationWeeks: true,
         createdAt: true,
       },
     }),
     prisma.course.count({ where }),
   ]);
-  return { items, pagination: pageInfo(query, total) };
+  return { items: items.map(({ thumbnailAsset, ...course }) => ({ ...course, thumbnailUrl: thumbnailAsset?.secureUrl ?? null })), pagination: pageInfo(query, total) };
 }
 
 export async function getCourse(courseId) {
@@ -38,6 +39,7 @@ export async function getCourse(courseId) {
       slug: true,
       description: true,
       thumbnailKey: true,
+      thumbnailAsset: { select: { secureUrl: true } },
       durationWeeks: true,
       weeks: {
         where: { isPublished: true },
@@ -47,6 +49,7 @@ export async function getCourse(courseId) {
           weekNumber: true,
           title: true,
           description: true,
+          thumbnailAsset: { select: { secureUrl: true } },
           assessments: {
             where: { isPublished: true },
             orderBy: { createdAt: "asc" },
@@ -64,5 +67,5 @@ export async function getCourse(courseId) {
     },
   });
   if (!course) throw new ApiError(404, "Course not found", "COURSE_NOT_FOUND");
-  return course;
+  return { ...course, thumbnailUrl: course.thumbnailAsset?.secureUrl ?? null, weeks: course.weeks.map(({ thumbnailAsset, ...week }) => ({ ...week, thumbnailUrl: thumbnailAsset?.secureUrl ?? null })) };
 }

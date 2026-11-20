@@ -1,6 +1,8 @@
 import * as profileService from './profile.service.js';
 import { storePrivateUpload, deletePrivateUpload, readPrivateUpload } from '../../services/privateStorage.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { uploadToCloudinary, privateCloudinaryDownload } from '../../services/cloudinaryStorage.js';
+import { saveMediaAsset, removeMediaAsset, getOwnedMediaAsset } from '../../services/mediaAssets.js';
 
 export async function getProfile(req, res) {
   const profile = await profileService.getProfile(req.auth.userId);
@@ -19,6 +21,17 @@ function requireFile(req) {
 
 export async function uploadPhoto(req, res) {
   const file = requireFile(req);
+  if (process.env.UPLOAD_PROVIDER === 'cloudinary') {
+    const uploaded = await uploadToCloudinary(file, { folder: 'vortex-lms/student-profiles', resourceType: 'image', deliveryType: 'authenticated', allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] });
+    const asset = await saveMediaAsset(uploaded, { purpose: 'PROFILE_PHOTO', ownerUserId: req.auth.userId });
+    try {
+      const { profile, previousStorageKey } = await profileService.updateProfilePhoto(req.auth.userId, asset.id);
+      if (previousStorageKey && previousStorageKey !== asset.id && /^[0-9a-f-]{36}$/i.test(previousStorageKey)) {
+        try { await removeMediaAsset(previousStorageKey); } catch { console.error('Could not clean up a replaced profile photo', { userId: req.auth.userId }); }
+      } else if (previousStorageKey && previousStorageKey !== asset.id) await deletePrivateUpload(previousStorageKey);
+      return res.status(201).json({ data: { profile } });
+    } catch (error) { await removeMediaAsset(asset.id); throw error; }
+  }
   const stored = await storePrivateUpload(file, ['image/jpeg', 'image/png', 'image/webp']);
   try {
     const { profile, previousStorageKey } = await profileService.updateProfilePhoto(req.auth.userId, stored.storageKey);
@@ -36,6 +49,14 @@ export async function uploadPhoto(req, res) {
 export async function uploadDocument(req, res) {
   const file = requireFile(req);
   const safeOriginalName = file.originalname.split(/[\\/]/).at(-1).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 255) || 'document';
+  if (process.env.UPLOAD_PROVIDER === 'cloudinary') {
+    const uploaded = await uploadToCloudinary(file, { folder: 'vortex-lms/identity-documents', resourceType: file.mimetype === 'application/pdf' ? 'raw' : 'image', deliveryType: 'authenticated', allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] });
+    const asset = await saveMediaAsset(uploaded, { purpose: 'IDENTITY_DOCUMENT', ownerUserId: req.auth.userId });
+    try {
+      const document = await profileService.createStudentDocument(req.auth.userId, { ...req.body, originalFileName: safeOriginalName }, { storageKey: asset.id, mimeType: uploaded.mimeType, fileSizeBytes: uploaded.fileSizeBytes });
+      return res.status(201).json({ data: { document } });
+    } catch (error) { await removeMediaAsset(asset.id); throw error; }
+  }
   const stored = await storePrivateUpload(file, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
   try {
     const document = await profileService.createStudentDocument(req.auth.userId, { ...req.body, originalFileName: safeOriginalName }, stored);
@@ -47,6 +68,13 @@ export async function uploadDocument(req, res) {
 }
 
 export async function downloadPrivateFile(req, res) {
+  if (/^[0-9a-f-]{36}$/i.test(req.params.storageKey)) {
+    const asset = await getOwnedMediaAsset(req.auth.userId, req.params.storageKey);
+    await profileService.getOwnedFile(req.auth.userId, req.params.storageKey);
+    console.info('Private student file accessed', { userId: req.auth.userId, category: asset.purpose });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.redirect(302, privateCloudinaryDownload(asset, { attachment: asset.purpose !== 'PROFILE_PHOTO' }));
+  }
   const access = await profileService.getOwnedFile(req.auth.userId, req.params.storageKey);
   const bytes = await readPrivateUpload(req.params.storageKey);
   console.info('Private student file accessed', { userId: req.auth.userId, category: access.category });

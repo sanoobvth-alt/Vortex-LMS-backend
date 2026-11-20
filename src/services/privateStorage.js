@@ -19,7 +19,6 @@ export async function storePrivateUpload(file, allowedMimeTypes) {
 }
 
 export async function inspectUpload(file, allowedMimeTypes) {
-  if ((process.env.UPLOAD_PROVIDER || 'local') !== 'local') throw new ApiError(503, 'Private file storage is not configured', 'UPLOAD_UNAVAILABLE');
   if (!file?.buffer?.length) throw new ApiError(400, 'A file is required', 'FILE_REQUIRED');
   if (file.buffer.byteLength > Number(process.env.UPLOAD_MAX_BYTES || 5_242_880) || file.size !== file.buffer.byteLength) throw new ApiError(413, 'File exceeds the 5 MB limit', 'FILE_TOO_LARGE');
   const detected = await fileTypeFromBuffer(file.buffer);
@@ -30,7 +29,6 @@ export async function inspectUpload(file, allowedMimeTypes) {
 }
 
 export async function readPrivateUpload(storageKey) {
-  if ((process.env.UPLOAD_PROVIDER || 'local') !== 'local') throw new ApiError(503, 'Private file storage is not configured', 'UPLOAD_UNAVAILABLE');
   if (!storageKeyPattern.test(storageKey)) throw new ApiError(404, 'File not found', 'FILE_NOT_FOUND');
   const filePath = path.resolve(root, storageKey);
   if (path.dirname(filePath) !== root) throw new ApiError(404, 'File not found', 'FILE_NOT_FOUND');
@@ -42,7 +40,7 @@ export async function readPrivateUpload(storageKey) {
 }
 
 export async function deletePrivateUpload(storageKey) {
-  if ((process.env.UPLOAD_PROVIDER || 'local') !== 'local' || !storageKeyPattern.test(storageKey)) return;
+  if (!storageKeyPattern.test(storageKey)) return;
   try { await unlink(path.resolve(root, storageKey)); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
 }

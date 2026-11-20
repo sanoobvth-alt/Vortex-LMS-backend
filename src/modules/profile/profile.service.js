@@ -66,6 +66,22 @@ export async function createStudentDocument(userId, input, storedFile) {
 }
 
 export async function getOwnedFile(userId, storageKey) {
+  const mediaAsset = await prisma.mediaAsset.findUnique({ where: { id: storageKey } });
+  if (mediaAsset) {
+    const photoAsset = await prisma.studentProfile.findFirst({ where: { userId, profilePhotoKey: storageKey }, select: { id: true } });
+    const documentAsset = await prisma.studentDocument.findFirst({ where: { storageKey, student: { userId } }, select: { originalFileName: true, mimeType: true } });
+    const certificateAsset = await prisma.certificate.findFirst({ where: { mediaAssetId: storageKey, student: { userId } }, select: { id: true } });
+    const submissionAttachment = await prisma.submissionAttachment.findFirst({ where: { mediaAssetId: storageKey, submission: { student: { userId } } }, select: { id: true } });
+    if (photoAsset) return { mimeType: mediaAsset.mimeType, fileName: 'profile-photo', inline: true, category: 'PROFILE_PHOTO' };
+    if (documentAsset) return { mimeType: documentAsset.mimeType, fileName: documentAsset.originalFileName, inline: false, category: 'IDENTITY_DOCUMENT' };
+    if (certificateAsset) return { mimeType: mediaAsset.mimeType, fileName: 'certificate.pdf', inline: false, category: 'CERTIFICATE' };
+    if (submissionAttachment) return { mimeType: mediaAsset.mimeType, fileName: mediaAsset.originalFileName, inline: false, category: 'ASSIGNMENT_ATTACHMENT' };
+    if (mediaAsset.purpose === 'COURSE_PDF' && mediaAsset.courseId) {
+      const enrollment = await prisma.enrollment.findFirst({ where: { courseId: mediaAsset.courseId, status: 'ACTIVE', student: { userId } }, select: { id: true } });
+      if (enrollment) return { mimeType: mediaAsset.mimeType, fileName: mediaAsset.originalFileName, inline: false, category: 'COURSE_PDF' };
+    }
+    throw new ApiError(404, 'File not found', 'FILE_NOT_FOUND');
+  }
   const photo = await prisma.studentProfile.findFirst({ where: { userId, profilePhotoKey: storageKey }, select: { id: true } });
   if (photo) return { mimeType: mimeTypeFromKey(storageKey), fileName: 'profile-photo', inline: true, category: 'PROFILE_PHOTO' };
   const document = await prisma.studentDocument.findFirst({ where: { storageKey, student: { userId } }, select: { originalFileName: true, mimeType: true } });
