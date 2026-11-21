@@ -17,6 +17,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
     "db:seed": "node prisma/seed.js",
+    "create:academic-user": "node scripts/createAcademicUser.js",
     "prisma:studio": "prisma studio",
     "build": "prisma generate",
     "postinstall": "prisma generate"
